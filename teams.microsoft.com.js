@@ -4,7 +4,7 @@
 
 window.onload = () => {
 
-    // $("body").append($(``));
+    $("body").append($(tempHtml));
     // $("head").append($(``));
 
     var timerWaitLoadHtml = setInterval(()=>{
@@ -115,15 +115,16 @@ var deteccoes = {
     itns: [
         {
             html:
-            `<span class="notdoneyet2">
-                <input id="detectarTchausBtn" type="checkbox"> Por mensagens no chat
+            `<span>
+                <input id="detectarMsgBtn" type="checkbox"> Por mensagens no chat
                 <span>
                     <div>
                         Número de vezes: 
-                        <input id="tchausNumBtn" type="number">
+                        <input id="MsgNumBtn" min="1" value="4" type="number">
                     </div>
-                    Template regex: 
-                    <input id="sairHora" type="text">
+                    <div>
+                        Template: <select id="msgTemplate"></select>
+                    </div>
                 </span>
             </span>`
         },
@@ -156,22 +157,59 @@ var deteccoes = {
             detecHtml += item.html;
         });
         $("#deteccoes").after(detecHtml);
+
+        deteccoes.searchTemplates.forEach((template,  templateNum)=>{
+            $("#msgTemplate").append(`<option value="${templateNum}">${template.nome}</option>`);
+        });
+
+        
+        var chatSearch1 = null;
+        $("#detectarMsgBtn, #MsgNumBtn, #msgTemplate").change(()=>{
+            var atvd = $("#detectarMsgBtn")[0].checked;
+            var occurrNum = parseInt($("#MsgNumBtn").val());
+            var templateNum = parseInt($("#msgTemplate").val());
+
+            var ed = {
+                func: acoes.ativar,
+                templateNum: templateNum,
+                occurrNum: occurrNum
+            }
+            
+            if(atvd)
+            {
+                if(chatSearch1 == null)
+                {
+                    console.log("set")
+                    chatSearch1 = deteccoes.setChatSearch(ed);
+                }
+                else
+                {
+                    console.log("edit")
+                    deteccoes.editChatSearch(chatSearch1, ed);
+                }
+            }
+            else if(!atvd && chatSearch1 != null) 
+            {
+                console.log("remove");
+                deteccoes.removeChatSearch(chatSearch1);
+                chatSearch1 = null;
+            } else console.log("nada");
+            console.log("chatSearch1:", chatSearch1)
+        });
     },
 
 
-    chatTemplates: [
+    searchTemplates: [
         {nome: "Tchau",  itns: ["Tchau", "tchau", "Flw", "flw", "Ate", "ate", "Até", "até"]},
         {nome: "Presente",  itns: ["Presente", "presente"]}
     ],
     contarMsgs: (chatTemplateNum) => 
     {
-        var template = deteccoes.chatTemplates[chatTemplateNum];
+        var template = deteccoes.searchTemplates[chatTemplateNum];
         var count = 0;
         manipladorPag.getMessages().forEach(message => {
-            // console.log("analisando: "+message.corpo);
             for (let i = 0; i < template.itns.length; i++) {
-                const t = tchauSearch[i];
-                // console.log(t);
+                const t = template.itns[i];
                 if(message.corpo.indexOf(t) != -1)
                 {
                     count++;
@@ -186,18 +224,70 @@ var deteccoes = {
 
     searchIndex: 0,
     searches: [],
-    setChatSearch: (templNum, func) => {
+    setChatSearch: (ed) => {
+
+        console.log(ed)
+
+        if(typeof ed.func != "function" || typeof ed.templateNum != "number" || typeof ed.occurrNum != "number") return null;
+
+        if(deteccoes.searches.length == 0) manipladorPag.keepUpdatingChat(true, deteccoes.setChat);
+
         deteccoes.searchIndex++;
+
         deteccoes.searches.push({
             num: deteccoes.searchIndex,
-            func: func,
-            templNum: templNum
-
+            func: ed.func,
+            templateNum: ed.templateNum,
+            occurrNum: ed.occurrNum
         });
+
         return deteccoes.searchIndex;
     },
     removeChatSearch: (num) => {
         deteccoes.searches = deteccoes.searches.filter(search=>{return search.num != num});
+        
+        if(deteccoes.searches.length == 0) manipladorPag.keepUpdatingChat(false);
+    },
+    editChatSearch: (num, ed)=>{
+        var searchI = deteccoes.searches.findIndex((search)=>{
+            return search.num == num;
+        });
+
+        if(typeof ed.func != "undefined")
+        {
+            deteccoes.searches[searchI].func = ed.func;
+        }
+
+        if(typeof ed.templateNum != "undefined")
+        {
+            deteccoes.searches[searchI].templateNum = ed.templateNum;
+        }
+
+        if(typeof ed.occurrNum != "undefined")
+        {
+            deteccoes.searches[searchI].occurrNum = ed.occurrNum;
+        }
+    },
+    lastChat: null,
+    setChat: (chat) => {
+        if(deteccoes.lastChat != chat)
+        {
+            deteccoes.lastChat = chat;
+
+            deteccoes.searches.forEach((search)=>{
+                var occurrences = deteccoes.contarMsgs(search.templateNum);
+                if(occurrences >= search.occurrNum)
+                {
+                    deteccoes.removeChatSearch(search.num);
+
+                    search.func({
+                        templateNum: search.templateNum,
+                        occurrences: occurrences,
+                        occurrTarget: search.occurrNum
+                    });
+                }
+            });
+        }
     }
 }
 
@@ -260,7 +350,7 @@ var outros = {
             console.log(manipladorPag.getPessoas());
         });
         $("#contarTchausBtn").click(()=>{
-            console.log(`${deteccoes.contarMsgs(0)} mensagens detectadas para template "${deteccoes.chatTemplates[0].nome}"`);
+            console.log(`${deteccoes.contarMsgs(0)} mensagens detectadas para template "${deteccoes.searchTemplates[0].nome}"`);
         });
         $("#muteBtn").change(()=>{
             acoes.mutarAudios();
@@ -272,6 +362,16 @@ var outros = {
 /*------------------ manipulador de pagina (para o teams) ------------------*/
 
 var manipladorPag = {
+    updateChatTimer: null,
+    keepUpdatingChat: (eneb, func) => {
+        if(eneb)
+        {
+            manipladorPag.updateChatTimer = setInterval(()=>{
+                func(manipladorPag.getMessages());
+            }, 1000);
+        }
+        else clearInterval(manipladorPag.updateChatTimer);
+    },
     getMessages :() => {
         /*
         Organização das mensagens do chat do teams:
@@ -328,3 +428,174 @@ var manipladorPag = {
         return pessoas;
     }
 }
+
+
+var tempHtml = ` <div id="painel" class="AminimizedWdw" style="display: none; top: 0px; left: 0px">
+<div class="bar" id="painelheader">
+<div></div>
+</div>
+<div class="content">
+                
+    <div id="deteccoes">Detecção:</div>
+    
+    <div id="acoes">Ações:</div>            
+
+    <span class="notdoneyet">
+        <input id="sairBtn" type="checkbox"> Sair da chamada
+    </span>
+
+    <span class="notdoneyet">
+        <input id="tchauBtn" type="checkbox"> Enviar mensagem
+    </span>
+
+    <span class="notdoneyet">
+        <input id="DesmutarChamadaBtn" type="checkbox"> Desativar mudo
+    </span>
+
+    <span class="notdoneyet">
+        <input id="tomarAlarmeBtn" type="checkbox"> Tocar alarme
+        <span>
+            <input type="button" id="playAlarm" value="Testar alarme"><input type="button" style="display:none" id="stopAlarm" value="Parar alarme">
+            <div>
+                Toque:
+                <select id="alarmOptions"></select> 
+            </div>
+            Volume:<br>
+            <input type="range" min="0" max="100" value="50" id="alarmVolume">
+        </span>
+    </span>
+
+    <div id="outros">Outros:</div>
+</div>
+</div>
+
+<style>
+.notdoneyet {
+background-color: #f008 !important;
+}
+.notdoneyet2 {
+background-color: #ff08 !important;
+}
+
+#painel.minimizedWdw .content {
+display: none;
+}
+
+#painel {
+font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+font-size: 14px;
+}
+
+#painel {
+z-index: 999;
+/* background: #f00; */
+position: absolute;
+color: #cfcfcf;
+transition: 1s height;
+}
+
+#painel input[type=number] {
+width: 50px
+}
+
+#painel .content > div {
+/* border: 1px solid #f00; */
+font-size: 1.2em;
+display: block;
+margin-top: 5px;
+padding-top: 5px;
+}
+
+#painel .content > div:not(:first-child) {
+border-top: 1px solid #888;
+}
+
+#painel .content > span {
+/* border: 1px solid #f00; */
+display: block;
+padding: 2px 0;
+}
+
+#painel .content > *:not(div) + span {
+border-top: 1px solid #52525288;
+}
+
+#painel .content > span > input[type=checkbox]+span {
+display: none;
+}
+#painel .content > span > input[type=checkbox]:checked+span {
+display: flex;
+flex-direction: column;
+align-items: flex-start;
+}
+#painel p {
+margin: 0;
+}
+
+#painel .mt {
+margin-top: 5px;
+border-bottom: 1px solid #f00;
+}
+
+#painel .bar {
+width: 100%;
+background: #313a74;
+display: flex;
+/*flex-direction: row-reverse;*/
+}
+
+#painel .bar > div {
+width: 18px;
+height: 18px;
+box-sizing: border-box;
+border-top: 8px solid #313a74;
+border-bottom: 8px solid #313a74;
+border-left: 4px solid #313a74;
+border-right: 4px solid #313a74;
+background: #adadad;
+}
+
+#painel .bar > div:hover {
+border-color: #44f;
+}
+
+#painel .content {
+background: #1d2661;
+padding: 5px 10px;
+/* min-width: 260px; */
+}
+
+#painel input[type=checkbox] {
+margin: 0;
+}
+
+#painel :is(input, button, textarea, select) {
+color: #000
+}
+
+#painel #tchauButton + span {
+display: none;
+}
+
+#painel #tchauButton:checked + span {
+display: unset;
+}
+
+#sairHoraButton + span #sairHoraButtonHora {
+display: none
+}
+
+#sairHoraButton:checked + span #sairHoraButtonHora {
+display: unset
+}
+
+/* #sairButton + span {
+display: none
+}
+
+#sairButton:checked + span {
+display: unset
+} */
+
+</style>`;
+// window.onload();
