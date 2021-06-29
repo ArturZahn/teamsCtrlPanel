@@ -7,7 +7,6 @@ window.onload = () => {
     // $("body").append($(``));
     // $("head").append($(``));
 
-
     var timerWaitLoadHtml = setInterval(()=>{
         if($("#painel").length != 0)
         {
@@ -23,6 +22,7 @@ function iniciarCodigo()
     initializeDraggableWindow();
     
     deteccoes.iniciar();
+    outros.iniciar();
 }
 
 /*------------------ draggable window ------------------*/
@@ -116,12 +116,14 @@ var deteccoes = {
         {
             html:
             `<span class="notdoneyet2">
-                <input id="detectarTchausBtn" type="checkbox"> Por tchaus no chat
+                <input id="detectarTchausBtn" type="checkbox"> Por mensagens no chat
                 <span>
                     <div>
-                        Número de tchaus: 
+                        Número de vezes: 
                         <input id="tchausNumBtn" type="number">
                     </div>
+                    Template regex: 
+                    <input id="sairHora" type="text">
                 </span>
             </span>`
         },
@@ -130,7 +132,10 @@ var deteccoes = {
             `<span class="notdoneyet2">
                 <input id="sairHoraBtn" type="checkbox"> Por quantidade de pessoas
                 <span>
-                    <input id="sairHora" type="time">
+                    <div>
+                        Número de pessoas: 
+                        <input id="sairHora" type="number">
+                    </div>
                 </span>
             </span>`
         },
@@ -150,7 +155,49 @@ var deteccoes = {
         deteccoes.itns.forEach((item)=>{
             detecHtml += item.html;
         });
-        $("#deteccoes").after(detecHtml)
+        $("#deteccoes").after(detecHtml);
+    },
+
+
+    chatTemplates: [
+        {nome: "Tchau",  itns: ["Tchau", "tchau", "Flw", "flw", "Ate", "ate", "Até", "até"]},
+        {nome: "Presente",  itns: ["Presente", "presente"]}
+    ],
+    contarMsgs: (chatTemplateNum) => 
+    {
+        var template = deteccoes.chatTemplates[chatTemplateNum];
+        var count = 0;
+        manipladorPag.getMessages().forEach(message => {
+            // console.log("analisando: "+message.corpo);
+            for (let i = 0; i < template.itns.length; i++) {
+                const t = tchauSearch[i];
+                // console.log(t);
+                if(message.corpo.indexOf(t) != -1)
+                {
+                    count++;
+                    break;
+                }
+            }
+        });
+    
+        return count;
+    },
+
+
+    searchIndex: 0,
+    searches: [],
+    setChatSearch: (templNum, func) => {
+        deteccoes.searchIndex++;
+        deteccoes.searches.push({
+            num: deteccoes.searchIndex,
+            func: func,
+            templNum: templNum
+
+        });
+        return deteccoes.searchIndex;
+    },
+    removeChatSearch: (num) => {
+        deteccoes.searches = deteccoes.searches.filter(search=>{return search.num != num});
     }
 }
 
@@ -158,11 +205,126 @@ var deteccoes = {
 
 var acoes = {
     itns: [
-            
+        
     ],
     
     iniciar: () => {
     },
 
+    ativar: (a) => {
+        console.log(a);
+    },
 
+    mutarAudios: (mut) => {
+        if(typeof mut != "Boolean") mut = $("#muteBtn")[0].checked;
+
+        console.log((mut?"des":"")+"ativando audio");
+        $("#muteBtn")[0].checked = mut;
+        $("audio:not(.naoMutar)").each((i, audio) => {
+            audio.muted = mut;
+        });
+    }
+}
+
+/*------------------ outros ------------------*/
+
+
+var outros = {
+    itns: [
+        {
+            html:
+            `<span>
+                <input id="mostrarChatBtn" type="button" value="Mostrar Chat"><br>
+                <input id="mostrarPessoasBtn" type="button" value="Mostrar Pessoas"><br>
+                <input id="contarTchausBtn" type="button" value="Contar Tchaus">
+            </span>`
+        },
+        {
+            html:
+            `<span>
+                <input id="muteBtn" type="checkbox"> Ativar mudo
+            </span>`
+        }
+    ],
+    iniciar: () => {
+        var detecHtml = "";
+        outros.itns.forEach((item)=>{
+            detecHtml += item.html;
+        });
+        $("#outros").after(detecHtml);
+
+        $("#mostrarChatBtn").click(()=>{
+            console.log(manipladorPag.getMessages());
+        });
+        $("#mostrarPessoasBtn").click(()=>{
+            console.log(manipladorPag.getPessoas());
+        });
+        $("#contarTchausBtn").click(()=>{
+            console.log(`${deteccoes.contarMsgs(0)} mensagens detectadas para template "${deteccoes.chatTemplates[0].nome}"`);
+        });
+        $("#muteBtn").change(()=>{
+            acoes.mutarAudios();
+        });
+
+    }
+};
+
+/*------------------ manipulador de pagina (para o teams) ------------------*/
+
+var manipladorPag = {
+    getMessages :() => {
+        /*
+        Organização das mensagens do chat do teams:
+
+        mensagem → <thread-body>
+        mensagem autor → <div data-tid="threadBodyDisplayName">
+        mensagem corpo → <div data-tid="messageBodyContent">
+        mensagem hora → <span data-tid="messageTimeStamp">
+
+        <calling-participant-stream
+
+        */
+        var messages = [];
+        $("thread-body").each(function(index) {
+            var thisMessage = $(this);
+        
+            var autor = $.trim(thisMessage.find("div[data-tid=threadBodyDisplayName]").text().replaceAll("\n", ""));
+            var corpo = $.trim(thisMessage.find("div[data-tid=messageBodyContent]").text().replaceAll("\n", ""));
+            var hora = $.trim(thisMessage.find("span[data-tid=messageTimeStamp]").text().replaceAll("\n", ""));
+        
+            // console.log(`${autor} as ${hora}:\n${corpo}`);
+            messages.push({autor: autor, hora: hora, corpo: corpo});
+        });
+        return messages;
+    },
+    getPessoas: () =>
+    {
+        var pessoas = {
+            categorias: [],
+            naChamada: 0,
+            apresentadores: 0,
+            participantes: 0
+        };
+
+        $("accordion-section").each(function(){
+            var qtd = parseInt($(this).find("button[accordion-section-toggle] span:nth-last-child(1)").html().replace("(", "").replace(")", ""));
+            var tp = $(this).find("button[accordion-section-toggle] span:nth-last-child(2)").html();
+            pessoas.categorias.push({
+                tipo: tp,
+                quantidade: qtd
+            });
+            if(tp == "Apresentadores")
+            {
+                pessoas.naChamada += qtd;
+                pessoas.apresentadores += qtd;
+            }
+            
+            if(tp == "Participantes")
+            {
+                pessoas.naChamada += qtd;
+                pessoas.participantes += qtd;
+            }
+        });
+        return pessoas;
+    }
 }
