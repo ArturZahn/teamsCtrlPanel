@@ -108,6 +108,17 @@ function dragElement(elmnt, elmnt2) {
     }
 }
 
+/*------------------ non linear volume ------------------*/
+
+function nonLinearVolModfier(vol)
+{
+    // vol = (Math.pow(b+1, vol/100)-1)/b;
+    vol = (Math.pow(8, vol/100)-1)/7;
+    if(vol > 1) vol = 1;
+    else if(vol < 0) vol = 0;
+    return vol;
+}
+
 /*------------------ detecções ------------------*/
 
 
@@ -345,19 +356,8 @@ var acoes = {
 
     ativar: (detec) => {
         console.log(detec);
-    },
-
-    mutarAudios: (mut) => {
-        if(typeof mut != "Boolean") mut = $("#muteBtn")[0].checked;
-
-        console.log((mut?"des":"")+"ativando audio");
-        $("#muteBtn")[0].checked = mut;
-        $("audio:not(.naoMutar)").each((i, audio) => {
-            audio.muted = mut;
-        });
     }
 }
-
 /*------------------ outros ------------------*/
 
 
@@ -375,7 +375,9 @@ var outros = {
             html:
             `<span>
                 <input id="muteBtn" type="checkbox"> Ativar mudo
-            </span>`
+            </span>
+            Volume:<br>
+            <input type="range" min="0" max="100" value="50" id="audioVolume">`
         }
     ],
     iniciar: () => {
@@ -395,9 +397,34 @@ var outros = {
             console.log(`${deteccoes.contarMsgs(0)} mensagens detectadas para template "${deteccoes.searchTemplates[0].nome}"`);
         });
         $("#muteBtn").change(()=>{
-            acoes.mutarAudios();
+            outros.setAudioMutado();
         });
 
+        $("#audioVolume").change(()=>{outros.setAudioVolume()});
+        $("#audioVolume").focusin(()=>{
+            $("#audioVolume").bind("mousemove", (e)=>{
+                if(e.buttons%2==1) outros.setAudioVolume();
+            });
+        });
+        $("#audioVolume").focusout(()=>{
+            $("#audioVolume")[0].blur();
+            $("#audioVolume").unbind("mousemove", ()=>{outros.setAudioVolume()});
+        });
+
+    },
+
+    setAudioMutado: (mut) => {
+        if(mut == null) mut = $("#muteBtn")[0].checked;
+
+        $("#muteBtn")[0].checked = mut;
+        manipladorPag.setMutado(mut);
+    },
+    setAudioVolume: (vol) => {
+        if(vol == null) vol = parseInt($("#audioVolume").val());
+
+        $("#audioVolume").val(vol);
+
+        manipladorPag.setVolume(nonLinearVolModfier(vol));
     }
 };
 
@@ -468,6 +495,19 @@ var manipladorPag = {
             }
         });
         return pessoas;
+    },
+    getAudios: () => {
+        return $("audio:not(.naoMutar)");
+    },
+    setMutado: (mut) => {
+        manipladorPag.getAudios().each((i, audio) => {
+            audio.muted = mut;
+        });
+    },
+    setVolume: (vol) => {
+        manipladorPag.getAudios().each((i, audio) => {
+            audio.volume = vol;
+        });
     }
 }
 
