@@ -131,18 +131,18 @@ var deteccoes = {
         {
             html:
             `<span class="notdoneyet2">
-                <input id="sairHoraBtn" type="checkbox"> Por quantidade de pessoas
+                <input disabled id="quantPessoaBtn" type="checkbox"> Por quantidade de pessoas
                 <span>
                     <div>
                         Número de pessoas: 
-                        <input id="sairHora" type="number">
+                        <input disabled id="quantPessoa" type="number">
                     </div>
                 </span>
             </span>`
         },
         {
             html:
-            `<span class="notdoneyet2">
+            `<span>
                 <input id="sairHoraBtn" type="checkbox"> Por horário
                 <span>
                     <input id="sairHora" type="time">
@@ -163,44 +163,13 @@ var deteccoes = {
         });
 
         
-        var chatSearch1 = null;
-        $("#detectarMsgBtn, #MsgNumBtn, #msgTemplate").change(()=>{
-            var atvd = $("#detectarMsgBtn")[0].checked;
-            var occurrNum = parseInt($("#MsgNumBtn").val());
-            var templateNum = parseInt($("#msgTemplate").val());
-
-            var ed = {
-                func: acoes.ativar,
-                templateNum: templateNum,
-                occurrNum: occurrNum
-            }
-            
-            if(atvd)
-            {
-                if(chatSearch1 == null)
-                {
-                    console.log("set")
-                    chatSearch1 = deteccoes.setChatSearch(ed);
-                }
-                else
-                {
-                    console.log("edit")
-                    deteccoes.editChatSearch(chatSearch1, ed);
-                }
-            }
-            else if(!atvd && chatSearch1 != null) 
-            {
-                console.log("remove");
-                deteccoes.removeChatSearch(chatSearch1);
-                chatSearch1 = null;
-            } else console.log("nada");
-            console.log("chatSearch1:", chatSearch1)
-        });
+        $("#detectarMsgBtn, #MsgNumBtn, #msgTemplate").change(deteccoes.updateDetectarMensagem);
+        $("#sairHoraBtn, #sairHora").change(deteccoes.updateDetectarHora);
     },
 
 
     searchTemplates: [
-        {nome: "Tchau",  itns: ["Tchau", "tchau", "Flw", "flw", "Ate", "ate", "Até", "até"]},
+        {nome: "Tchau",  itns: ["Tchau", "tchau", "Flw", "flw", "Ate", "ate", "Até", "até", "adios", "Adios", "hasta luego", "Hasta luego"]},
         {nome: "Presente",  itns: ["Presente", "presente"]}
     ],
     contarMsgs: (chatTemplateNum) => 
@@ -225,8 +194,6 @@ var deteccoes = {
     searchIndex: 0,
     searches: [],
     setChatSearch: (ed) => {
-
-        console.log(ed)
 
         if(typeof ed.func != "function" || typeof ed.templateNum != "number" || typeof ed.occurrNum != "number") return null;
 
@@ -288,7 +255,82 @@ var deteccoes = {
                 }
             });
         }
+    },
+    chatSearch1: null,
+    updateDetectarMensagem: ()=>{
+        var atvd = $("#detectarMsgBtn")[0].checked;
+        var occurrNum = parseInt($("#MsgNumBtn").val());
+        var templateNum = parseInt($("#msgTemplate").val());
+
+        var ed = {
+            func: (det)=>{
+                acoes.ativar({
+                    tipoDetec: "por mensagem",
+                    detalhesDetec: det
+                });
+            },
+            templateNum: templateNum,
+            occurrNum: occurrNum
+        }
+        
+        if(atvd)
+        {
+            if(deteccoes.chatSearch1 == null)
+            {
+                deteccoes.chatSearch1 = deteccoes.setChatSearch(ed);
+            }
+            else
+            {
+                deteccoes.editChatSearch(deteccoes.chatSearch1, ed);
+            }
+        }
+        else if(!atvd && deteccoes.chatSearch1 != null) 
+        {
+            deteccoes.removeChatSearch(deteccoes.chatSearch1);
+            deteccoes.chatSearch1 = null;
+        }
+    },
+    deteccaoHora: null,
+    updateDetectarHora: () => {
+        var atvd =  $("#sairHoraBtn")[0].checked;
+        var hora = $("#sairHora").val();
+        
+        if(deteccoes.deteccaoHora != null) removeTimeTrigger(deteccoes.deteccaoHora);
+        
+        if(atvd && hora != "")
+        {
+            deteccoes.deteccaoHora = setTimeTrigger((det)=>{
+                acoes.ativar({
+                    tipoDetec: "por hora",
+                    detalhesDetec: det
+                });
+            }, hora);
+        }
     }
+}
+
+/*------------------ deteccoes - hora ------------------*/
+
+function setTimeTrigger(func, hour)
+{
+    return setTimeout(()=>{
+        func({
+            targetHour: hour
+        });
+    }, getMillisDiff(hour));
+}
+function removeTimeTrigger(num)
+{
+    return clearTimeout(num);
+}
+function getMillisDiff(time)
+{
+    [hour,min] = time.split(":");
+    return toMillis(new Date(0, 0, 0, hour, min, 0, 0)) - toMillis(new Date());
+}
+function toMillis(dat)
+{
+    return (((dat.getHours()*60)+dat.getMinutes())*60+dat.getSeconds())*1000+dat.getMilliseconds();
 }
 
 /*------------------ ações ------------------*/
@@ -301,8 +343,8 @@ var acoes = {
     iniciar: () => {
     },
 
-    ativar: (a) => {
-        console.log(a);
+    ativar: (detec) => {
+        console.log(detec);
     },
 
     mutarAudios: (mut) => {
@@ -385,7 +427,7 @@ var manipladorPag = {
 
         */
         var messages = [];
-        $("thread-body").each(function(index) {
+        $("calling-chat thread-body").each(function(index) {
             var thisMessage = $(this);
         
             var autor = $.trim(thisMessage.find("div[data-tid=threadBodyDisplayName]").text().replaceAll("\n", ""));
